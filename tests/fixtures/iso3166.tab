@@ -1,0 +1,9 @@
+# Subset of tzdata's iso3166.tab, for tests.
+CA	Canada
+DE	Germany
+GB	Britain (UK)
+JP	Japan
+KR	Korea (South)
+KP	Korea (North)
+NL	Netherlands
+US	United States

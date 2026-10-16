@@ -1,0 +1,74 @@
+#!/usr/sbin/nft -f
+# pi-passport firewall — rendered by install.sh, do not edit by hand.
+#
+# Design: the Pi NEVER routes packets for hotspot clients. Forwarding is off
+# and the forward chain drops everything. The only way a client byte can
+# leave the Pi is by being handed to Tor (TCP -> TransPort, DNS -> DNSPort).
+# If Tor stops, clients simply lose connectivity: a kill switch by
+# construction, not by a rule that might be forgotten.
+
+define AP_IF   = "{{AP_IF}}"
+define AP_ADDR = {{AP_ADDR}}
+define TRANS_PORT = 9040
+define DNS_PORT   = 9053
+
+# Idempotent reload without touching other tables on the system.
+table ip  passport_nat {}
+delete table ip  passport_nat
+table inet passport {}
+delete table inet passport
+
+table ip passport_nat {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+
+        # All client DNS goes to Tor's resolver, whatever server they ask for.
+        iifname $AP_IF udp dport 53 redirect to :9053
+
+        # All client TCP goes into Tor's transparent proxy.
+        iifname $AP_IF ip daddr != $AP_ADDR meta l4proto tcp redirect to :9040
+    }
+}
+
+table inet passport {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state invalid drop
+        ct state established,related accept
+        iif lo accept
+
+        # ---- Hotspot side: only DHCP, Tor DNS and Tor TransPort ----------
+        iifname $AP_IF meta nfproto ipv6 drop
+        iifname $AP_IF udp sport 68 udp dport 67 accept
+        iifname $AP_IF ip daddr $AP_ADDR udp dport $DNS_PORT accept
+        iifname $AP_IF ip daddr $AP_ADDR tcp dport $TRANS_PORT accept
+        iifname $AP_IF icmp type echo-request limit rate 5/second accept
+        iifname $AP_IF counter drop
+
+        # ---- Home / upstream side: admin SSH and plumbing only -----------
+        tcp dport 22 ct state new limit rate 6/minute burst 6 packets accept
+        udp sport 67 udp dport 68 accept                      # DHCPv4 client
+        udp dport 546 accept                                  # DHCPv6 client
+        udp dport 5353 ip daddr 224.0.0.251 accept            # mDNS (raspberrypi.local)
+        udp dport 5353 ip6 daddr ff02::fb accept
+        icmp type { echo-request, destination-unreachable, time-exceeded } limit rate 10/second accept
+        icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded,
+                      parameter-problem, nd-router-advert, nd-neighbor-solicit,
+                      nd-neighbor-advert } accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        # Intentionally empty. Nothing is ever routed through this box.
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+        # Never send anything back into the hotspot that didn't come from
+        # Tor/DHCP/ICMP replies (blocks e.g. avahi/LLMNR chatter to clients).
+        oifname $AP_IF ct state established,related accept
+        oifname $AP_IF udp sport 67 accept
+        oifname $AP_IF drop
+    }
+}

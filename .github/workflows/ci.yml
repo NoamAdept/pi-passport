@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # what Raspberry Pi OS Bookworm ships
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck nftables
+          pip install ruff==0.6.9
+
+      - name: ShellCheck
+        run: shellcheck install.sh uninstall.sh
+
+      - name: Ruff
+        run: ruff check src tests
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Firewall ruleset parses
+        env:
+          AP_IF: wlan1
+          AP_ADDR: 192.168.77.1
+        run: |
+          python - <<'PY'
+          import os, re
+          text = open("templates/firewall.nft").read()
+          text = re.sub(r"\{\{([A-Z0-9_]+)\}\}", lambda m: os.environ[m.group(1)], text)
+          open("/tmp/firewall.nft", "w").write(text)
+          PY
+          sudo nft -c -f /tmp/firewall.nft

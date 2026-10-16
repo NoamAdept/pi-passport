@@ -1,0 +1,29 @@
+# pi-passport Tor configuration — rendered by install.sh.
+# Debian's /usr/share/tor/tor-service-defaults-torrc supplies User,
+# DataDirectory and the cookie-authenticated ControlSocket at /run/tor/control.
+
+# Local SOCKS for the Pi's own checks only (never reachable from the network).
+SocksPort 127.0.0.1:9050
+
+# Transparent proxy + DNS for hotspot clients.
+# IsolateClientAddr: two devices on the hotspot never share a circuit.
+TransPort {{AP_ADDR}}:9040 IsolateClientAddr IsolateDestAddr
+DNSPort   {{AP_ADDR}}:9053 IsolateClientAddr
+
+# Make .onion addresses work transparently on every device.
+AutomapHostsOnResolve 1
+AutomapHostsSuffixes .onion
+VirtualAddrNetworkIPv4 10.192.0.0/10
+
+# Pure client: never relay or exit traffic for others.
+ORPort 0
+ExitRelay 0
+ExitPolicy reject *:*
+ClientRejectInternalAddresses 1
+
+# Be kind to the SD card.
+AvoidDiskWrites 1
+Log notice syslog
+
+# Exit country, managed by `passport set <country>`.
+%include /etc/tor/passport-country.conf

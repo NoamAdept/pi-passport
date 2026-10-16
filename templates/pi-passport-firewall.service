@@ -1,0 +1,15 @@
+[Unit]
+Description=pi-passport firewall (loaded before any network comes up)
+DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/pi-passport/firewall.nft
+ExecReload=/usr/sbin/nft -f /etc/pi-passport/firewall.nft
+
+[Install]
+WantedBy=sysinit.target

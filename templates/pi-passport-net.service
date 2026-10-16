@@ -1,0 +1,18 @@
+[Unit]
+Description=pi-passport hotspot interface ({{AP_IF}})
+BindsTo=sys-subsystem-net-devices-{{AP_IF}}.device
+After=sys-subsystem-net-devices-{{AP_IF}}.device pi-passport-firewall.service
+Requires=pi-passport-firewall.service
+Before=hostapd.service dnsmasq.service tor@default.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/sysctl -q -w net.ipv6.conf.{{AP_IF}}.disable_ipv6=1
+ExecStart=/usr/sbin/ip addr replace {{AP_ADDR}}/24 dev {{AP_IF}}
+ExecStart=/usr/sbin/ip link set {{AP_IF}} up
+ExecStop=/usr/sbin/ip addr flush dev {{AP_IF}}
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=sys-subsystem-net-devices-{{AP_IF}}.device
